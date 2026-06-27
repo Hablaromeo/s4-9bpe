@@ -1409,6 +1409,172 @@ syncCalEvents = function() {
   MANUAL_EVENTS.forEach(function(e) { CAL_EVENTS.push(e); });
 };
 
+
+
+
+
+/* Lê uma linha como array de objetos */
+
+/* Aplica valores a uma linha existente */
+
+/* Cria nova linha */
+
+/* Coleta TODOS os dados */
+
+/* Aplica dados — SÓ se o payload tiver dados reais */
+
+/* SALVAR */
+
+/* CARREGAR */
+
+
+
+/* ── SUPABASE PERSISTÊNCIA v4 ── */
+var SB_URL='https://lcmuvtdobshrpbfzcczb.supabase.co';
+var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxjbXV2dGRvYnNocnBiZnpjY3piIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0OTk2NDQsImV4cCI6MjA5ODA3NTY0NH0.mnxnw_KSnSVeVsY46xuueqog8BpJy3ZgY6UVT60FKQo';
+var ALL_TBLS=['ptbl-maj_modesto', 'ptbl-2_ten_lunaro', 'ptbl-1_sgt_wellington', 'ptbl-3_sgt_wendel', 'apoio-tbl', 'tbl-atr', 'tbl-cl1_0', 'tbl-cl3_0', 'tbl-cl3_1', 'tbl-cl5mun_0', 'tbl-cl5mun_1', 'tbl-cl2_0', 'tbl-cl2_1', 'tbl-cl5arm_0', 'tbl-cl6_0', 'tbl-cl7_0', 'tbl-cl8_0', 'tbl-cl9_0', 'tbl-cl9_1', 'grat-tbl'];
+var _st=null,_sv=false;
+
+function setSaveStatus(s){
+  var el=document.getElementById('save-status');
+  if(!el)return;
+  if(s==='saving')el.textContent='⏳ Salvando...';
+  else if(s==='ok'){el.textContent='✅ Salvo';setTimeout(function(){el.textContent='';},3000);}
+  else if(s==='error')el.textContent='❌ Erro';
+  else el.textContent=s||'';
+  el.style.color=s==='error'?'#c0280a':'#c8d88a';
+}
+
+function rdRow(tr){
+  var c=[];
+  tr.querySelectorAll('td').forEach(function(td){
+    if(td.classList.contains('dc'))return;
+    var s=td.querySelector('select'),d=td.querySelector('input[type=date]'),e=td.querySelector('[contenteditable]');
+    if(s)c.push({t:'s',v:s.value});
+    else if(d)c.push({t:'d',v:d.value});
+    else if(e)c.push({t:'e',v:e.textContent||''});
+    else c.push({t:'',v:''});
+  });
+  return c;
+}
+
+function wrRow(tr,cells){
+  var tds=Array.from(tr.querySelectorAll('td')).filter(function(t){return!t.classList.contains('dc');});
+  cells.forEach(function(cell,i){
+    if(i>=tds.length)return;
+    var td=tds[i];
+    if(cell.t==='s'){
+      var sel=td.querySelector('select');
+      if(!sel)return;
+      sel.value=cell.v;
+      if(sel.classList.contains('ss'))sel.className='ss s-'+cell.v;
+      else if(sel.classList.contains('ps'))sel.className='ps p-'+cell.v;
+      else if(sel.closest('.status-cell')){var dot=sel.closest('.status-cell').querySelector('.sdot');if(dot)dot.className='sdot sdot-'+cell.v;}
+    }else if(cell.t==='d'){var inp=td.querySelector('input[type=date]');if(inp){inp.value=cell.v;tr.dataset.prazo=cell.v||'';}}
+    else if(cell.t==='e'){var ce=td.querySelector('[contenteditable]');if(ce)ce.textContent=cell.v;}
+  });
+}
+
+function mkRow(cells){
+  var tr=document.createElement('tr');
+  cells.forEach(function(cell){
+    var td=document.createElement('td');
+    if(cell.t==='s'){
+      var isPrio=['hi','md','lo'].indexOf(cell.v)>=0,isProc=['ni','ea','fn'].indexOf(cell.v)>=0;
+      if(isPrio){td.innerHTML='<select class="ps p-'+cell.v+'" onchange="updPrio(this)"><option value="hi">Alta</option><option value="md">Média</option><option value="lo">Baixa</option></select>';}
+      else if(isProc){td.innerHTML='<div class="status-cell"><span class="sdot sdot-'+cell.v+'"></span><select class="ps2" onchange="updProcStatus(this)"><option value="ni">Não Iniciado</option><option value="ea">Em Andamento</option><option value="fn">Finalizado</option></select></div>';}
+      else{td.innerHTML='<select class="ss s-'+cell.v+'" onchange="updSel(this)"><option value="ok">🟢 OK</option><option value="wn">🟡 Atenção</option><option value="dg">🔴 Crítico</option></select>';}
+      if(td.querySelector('select'))td.querySelector('select').value=cell.v;
+    }else if(cell.t==='d'){td.innerHTML='<input type="date" class="di" value="'+(cell.v||'')+'" onchange="saveLS()">';}
+    else{var sp=document.createElement('span');sp.contentEditable='true';sp.textContent=cell.v||'';sp.addEventListener('blur',saveLS);td.appendChild(sp);}
+    tr.appendChild(td);
+  });
+  var del=document.createElement('td');del.className='dc';del.innerHTML='<button class="db" onclick="delRow(this)">✕</button>';tr.appendChild(del);
+  return tr;
+}
+
+function collectData(){
+  var d={};
+  ALL_TBLS.forEach(function(id){
+    var tbl=document.getElementById(id);if(!tbl)return;
+    var tb=tbl.tagName==='TBODY'?tbl:tbl.querySelector('tbody');if(!tb)return;
+    var rows=[];tb.querySelectorAll('tr').forEach(function(tr){rows.push(rdRow(tr));});
+    d[id]=rows;
+  });
+  var nb={};
+  document.querySelectorAll('.nb').forEach(function(el,i){
+    var r=[];el.querySelectorAll('.nrow').forEach(function(row){
+      var dot=row.querySelector('.ndot'),txt=row.querySelector('.ntxt');
+      r.push({c:dot?dot.className:'ndot nd-ok',t:txt?txt.textContent:''});
+    });nb[i]=r;
+  });
+  d['_nb']=nb;
+  if(window.MANUAL_EVENTS&&MANUAL_EVENTS.length)d['_evts']=MANUAL_EVENTS;
+  return d;
+}
+
+function applyData(d){
+  if(!d||typeof d!=='object')return;
+  /* só aplica se tiver dados reais em pelo menos uma tabela */
+  var valid=ALL_TBLS.some(function(id){
+    return d[id]&&d[id].length>0&&d[id][0]&&d[id][0].some(function(c){return c.v&&c.v.trim()!=='';}); 
+  });
+  if(!valid){console.log('Payload sem dados reais - mantendo HTML original');return;}
+  ALL_TBLS.forEach(function(id){
+    var saved=d[id];if(!saved||!saved.length)return;
+    var tbl=document.getElementById(id);if(!tbl)return;
+    var tb=tbl.tagName==='TBODY'?tbl:tbl.querySelector('tbody');if(!tb)return;
+    var existing=Array.from(tb.querySelectorAll('tr'));
+    saved.forEach(function(cells,ri){
+      if(!cells||!cells.length)return;
+      if(ri<existing.length)wrRow(existing[ri],cells);
+      else tb.appendChild(mkRow(cells));
+    });
+  });
+  var nb=d['_nb']||{};
+  document.querySelectorAll('.nb').forEach(function(el,i){
+    var saved=nb[i];if(!saved||!saved.length)return;
+    var body=el.querySelector('.nbody');if(!body)return;
+    body.innerHTML='';
+    saved.forEach(function(n){
+      var div=document.createElement('div');div.className='nrow';
+      div.innerHTML='<div class="'+(n.c||'ndot nd-ok')+'" onclick="cycleNotice(this)"></div>'
+        +'<div class="ntxt" contenteditable="true" onblur="saveLS()">'+(n.t||'')+'</div>'
+        +'<button class="ndb" onclick="delRow2(this)">✕</button>';
+      body.appendChild(div);
+    });
+  });
+  if(d['_evts'])window.MANUAL_EVENTS=d['_evts'];
+  setTimeout(function(){if(typeof syncCalEvents==='function')syncCalEvents();if(typeof renderCal==='function')renderCal();},200);
+}
+
+function saveLS(){
+  clearTimeout(_st);
+  _st=setTimeout(function(){
+    if(_sv)return;_sv=true;setSaveStatus('saving');
+    fetch(SB_URL+'/rest/v1/dashboard_data?id=eq.main',{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Prefer':'return=minimal'},
+      body:JSON.stringify({payload:collectData(),updated_at:new Date().toISOString()})
+    }).then(function(r){_sv=false;if(r.ok||r.status===204)setSaveStatus('ok');else setSaveStatus('error');})
+    .catch(function(){_sv=false;setSaveStatus('error');});
+  },1500);
+}
+
+function loadFromSupabase(){
+  setSaveStatus('⏳...');
+  fetch(SB_URL+'/rest/v1/dashboard_data?id=eq.main&select=payload,updated_at',{
+    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}
+  }).then(function(r){return r.json();})
+  .then(function(rows){
+    if(rows&&rows[0]&&rows[0].payload){
+      applyData(rows[0].payload);
+      var dt=new Date(rows[0].updated_at);
+      setSaveStatus('🕐 '+dt.toLocaleDateString('pt-BR')+' '+dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}));
+    }else setSaveStatus('');
+  }).catch(function(e){console.warn('Load failed:',e);setSaveStatus('');});
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   show('proc', document.querySelector('.ni.active'));
   calView('week');
@@ -1424,178 +1590,12 @@ var saveTimer = null;
 var isSaving = false;
 
 /* Coleta todos os dados editáveis do dashboard */
-function collectData() {
-  var data = {};
-
-  /* contenteditable */
-  document.querySelectorAll('[contenteditable]').forEach(function(el, i) {
-    var key = el.id ? 'id_' + el.id : 'ce_' + i;
-    data[key] = el.textContent || '';
-  });
-
-  /* selects (status, prioridade, etc) */
-  document.querySelectorAll('select').forEach(function(sel, i) {
-    var key = sel.id ? 'sel_id_' + sel.id : 'sel_' + i;
-    data[key] = sel.value;
-  });
-
-  /* date inputs */
-  document.querySelectorAll('input[type="date"]').forEach(function(inp, i) {
-    data['date_' + i] = inp.value;
-  });
-
-  /* linhas das tabelas (estrutura) */
-  var tables = {};
-  document.querySelectorAll('tbody').forEach(function(tb) {
-    var tid = tb.id || tb.closest('table') && tb.closest('table').id;
-    if (!tid) return;
-    var rows = [];
-    tb.querySelectorAll('tr').forEach(function(tr) {
-      var cells = [];
-      tr.querySelectorAll('td').forEach(function(td) {
-        var sel = td.querySelector('select');
-        var inp = td.querySelector('input[type="date"]');
-        var ce  = td.querySelector('[contenteditable]');
-        if (sel) cells.push({t:'sel', v:sel.value});
-        else if (inp) cells.push({t:'date', v:inp.value});
-        else if (ce) cells.push({t:'ce', v:ce.textContent});
-        else cells.push({t:'txt', v:td.textContent.trim()});
-      });
-      if (cells.length > 0) rows.push(cells);
-    });
-    tables[tid] = rows;
-  });
-  data['__tables__'] = tables;
-
-  /* avisos/notices */
-  var notices = {};
-  document.querySelectorAll('.nb').forEach(function(nb, i) {
-    var rows = [];
-    nb.querySelectorAll('.nrow').forEach(function(row) {
-      var dot = row.querySelector('.ndot');
-      var txt = row.querySelector('.ntxt');
-      rows.push({
-        level: dot ? dot.className : '',
-        text:  txt ? txt.textContent : ''
-      });
-    });
-    notices['nb_' + i] = rows;
-  });
-  data['__notices__'] = notices;
-
-  /* eventos manuais do calendário */
-  if (window.MANUAL_EVENTS) data['__manual_events__'] = MANUAL_EVENTS;
-
-  return data;
-}
 
 /* Aplica dados salvos ao DOM */
-function applyData(data) {
-  if (!data) return;
-
-  /* contenteditable */
-  var ceEls = document.querySelectorAll('[contenteditable]');
-  ceEls.forEach(function(el, i) {
-    var key = el.id ? 'id_' + el.id : 'ce_' + i;
-    if (data[key] !== undefined) el.textContent = data[key];
-  });
-
-  /* selects */
-  document.querySelectorAll('select').forEach(function(sel, i) {
-    var key = sel.id ? 'sel_id_' + sel.id : 'sel_' + i;
-    if (data[key] !== undefined) {
-      sel.value = data[key];
-      /* atualizar visual */
-      if (sel.classList.contains('ss')) updSel(sel);
-      if (sel.classList.contains('ps')) updPrio(sel);
-      if (sel.classList.contains('ps2') && sel.closest('.status-cell')) updProcStatus(sel);
-    }
-  });
-
-  /* date inputs */
-  document.querySelectorAll('input[type="date"]').forEach(function(inp, i) {
-    if (data['date_' + i]) inp.value = data['date_' + i];
-  });
-
-  /* reconstruir linhas extras das tabelas */
-  var tables = data['__tables__'] || {};
-  Object.keys(tables).forEach(function(tid) {
-    var tbody = document.getElementById(tid);
-    if (!tbody || tbody.tagName !== 'TBODY') {
-      var tbl = document.getElementById(tid);
-      if (tbl) tbody = tbl.querySelector('tbody');
-    }
-    if (!tbody) return;
-
-    var savedRows = tables[tid];
-    var existingRows = tbody.querySelectorAll('tr');
-    var diff = savedRows.length - existingRows.length;
-
-    /* adicionar linhas faltantes */
-    for (var r = 0; r < diff; r++) {
-      var tr = document.createElement('tr');
-      if (savedRows[existingRows.length + r]) {
-        savedRows[existingRows.length + r].forEach(function(cell) {
-          var td = document.createElement('td');
-          if (cell.t === 'sel') {
-            td.innerHTML = '<select data-key="sel134" class="ss s-ok" onchange="updSel(this)"><option value="ok">🟢 OK</option><option value="wn">🟡 Atenção</option><option value="dg">🔴 Crítico</option></select>';
-            td.querySelector('select').value = cell.v;
-          } else if (cell.t === 'date') {
-            td.innerHTML = '<input type="date" class="di" value="' + cell.v + '">';
-          } else {
-            td.innerHTML = '<span contenteditable="true" data-key="ce503" onblur="saveLS()">' + (cell.v||'') + '</span>';
-          }
-          tr.appendChild(td);
-        });
-        /* delete button */
-        var tdDel = document.createElement('td');
-        tdDel.className = 'dc';
-        tdDel.innerHTML = '<button class="db" onclick="delRow(this)">✕</button>';
-        tr.appendChild(tdDel);
-      }
-      tbody.appendChild(tr);
-    }
-  });
-
-  /* restaurar avisos */
-  var notices = data['__notices__'] || {};
-  Object.keys(notices).forEach(function(key) {
-    var idx = parseInt(key.replace('nb_',''));
-    var nb  = document.querySelectorAll('.nb')[idx];
-    if (!nb) return;
-    var body = nb.querySelector('.nbody');
-    if (!body) return;
-    body.innerHTML = '';
-    notices[key].forEach(function(n) {
-      var div = document.createElement('div');
-      div.className = 'nrow';
-      div.innerHTML = '<div class="ndot ' + (n.level||'nd-ok') + '" onclick="cycleNotice(this)"></div>'
-        + '<div class="ntxt" contenteditable="true" onblur="saveLS()">' + (n.text||'') + '</div>'
-        + '<button class="ndb" onclick="delRow2(this)">✕</button>';
-      body.appendChild(div);
-    });
-  });
-
-  /* restaurar eventos manuais */
-  if (data['__manual_events__']) {
-    window.MANUAL_EVENTS = data['__manual_events__'];
-  }
-}
 
 /* Indicador de status de salvamento */
-function setSaveStatus(status) {
-  var el = document.getElementById('save-status');
-  if (!el) return;
-  var icons = { saving:'⏳ Salvando...', ok:'✅ Salvo', error:'❌ Erro ao salvar', loading:'⏳ Carregando...' };
-  el.textContent = icons[status] || '';
-  el.style.color = status === 'error' ? '#c0280a' : status === 'ok' ? '#1a7a18' : '#6a6040';
-}
 
 /* SALVAR no Supabase (debounced 1.5s) */
-function saveLS() {
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(doSave, 1500);
-}
 
 function doSave() {
   if (isSaving) return;
@@ -1625,43 +1625,9 @@ function doSave() {
 }
 
 /* CARREGAR do Supabase */
-function loadFromSupabase() {
-  setSaveStatus('loading');
-  fetch(SB_URL + '/rest/v1/dashboard_data?id=eq.main&select=payload,updated_at', {
-    headers: {
-      'apikey': SB_KEY,
-      'Authorization': 'Bearer ' + SB_KEY
-    }
-  })
-  .then(function(r) { return r.json(); })
-  .then(function(rows) {
-    if (rows && rows.length > 0 && rows[0].payload && Object.keys(rows[0].payload).length > 0) {
-      applyData(rows[0].payload);
-      var dt = new Date(rows[0].updated_at);
-      var fmt = dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
-      setSaveStatus('');
-      var el = document.getElementById('save-status');
-      if (el) el.textContent = '🕐 Últ. salvo: ' + fmt;
-    } else {
-      setSaveStatus('');
-    }
-  })
-  .catch(function(e) {
-    console.warn('Supabase load failed, trying localStorage:', e);
-    try {
-      var d = localStorage.getItem('s4dash_v2');
-      if (d) applyData(JSON.parse(d));
-    } catch(x) {}
-    setSaveStatus('');
-  });
-}
 
 
-/* ══════════════════════════════════════════════════
-   SUPABASE PERSISTÊNCIA v2 — chave por elemento
-   ══════════════════════════════════════════════════ */
-var SB_URL = 'https://lcmuvtdobshrpbfzcczb.supabase.co';
-var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxjbXV2dGRvYnNocnBiZnpjY3piIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0OTk2NDQsImV4cCI6MjA5ODA3NTY0NH0.mnxnw_KSnSVeVsY46xuueqog8BpJy3ZgY6UVT60FKQo';
+
 var SB_HEADERS = {
   'Content-Type': 'application/json',
   'apikey': SB_KEY,
@@ -1672,45 +1638,12 @@ var SB_HEADERS = {
 var saveTimer = null;
 var isSaving = false;
 
-function setSaveStatus(s) {
-  var el = document.getElementById('save-status');
-  if (!el) return;
-  var msgs = { saving:'⏳ Salvando...', ok:'✅ Salvo', error:'❌ Erro', loading:'⏳ Carregando...' };
-  el.textContent = msgs[s] || s;
-  el.style.color = s==='error'?'#c0280a':s==='ok'?'#1a7a18':'#c8d88a';
-}
 
 
 /* ── CARREGAR ── */
-function loadFromSupabase() {
-  setSaveStatus('loading');
-  fetch(SB_URL + '/rest/v1/dashboard_data?id=eq.main&select=payload,updated_at', {
-    headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
-  })
-  .then(function(r) { return r.json(); })
-  .then(function(rows) {
-    if (rows && rows[0] && rows[0].payload && Object.keys(rows[0].payload).length > 1) {
-      applyData(rows[0].payload);
-      var dt = new Date(rows[0].updated_at);
-      var fmt = dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-      var el = document.getElementById('save-status');
-      if (el) el.textContent = '🕐 ' + fmt;
-    } else {
-      setSaveStatus('');
-    }
-  })
-  .catch(function(e) {
-    console.warn('Load error:', e);
-    setSaveStatus('');
-  });
-}
 
 
-/* ══════════════════════════════════════════════════
-   PERSISTÊNCIA v3 — tabela por tabela, linha por linha
-   ══════════════════════════════════════════════════ */
-var SB_URL = 'https://lcmuvtdobshrpbfzcczb.supabase.co';
-var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxjbXV2dGRvYnNocnBiZnpjY3piIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0OTk2NDQsImV4cCI6MjA5ODA3NTY0NH0.mnxnw_KSnSVeVsY46xuueqog8BpJy3ZgY6UVT60FKQo';
+
 var SB_HDR = {
   'Content-Type':'application/json',
   'apikey': SB_KEY,
@@ -1721,242 +1654,20 @@ var _saveTimer = null;
 var _saving = false;
 
 /* Status indicator */
-function setSaveStatus(s){
-  var el=document.getElementById('save-status');
-  if(!el)return;
-  var m={saving:'⏳ Salvando...',ok:'✅ Salvo',error:'❌ Erro ao salvar',loading:'⏳ Carregando...','':"🕐 "+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})};
-  el.textContent=m[s]!==undefined?m[s]:s;
-  el.style.color=s==='error'?'#c0280a':s==='ok'?'#1a7a18':'#c8d88a';
-}
 
 /* ── Lê uma linha de tr como array de {type,value} ── */
-function readRow(tr){
-  var cells=[];
-  tr.querySelectorAll('td').forEach(function(td){
-    if(td.classList.contains('dc'))return;
-    var sel=td.querySelector('select');
-    var inp=td.querySelector('input[type=date]');
-    var ce=td.querySelector('[contenteditable]');
-    if(sel) cells.push({t:'sel',v:sel.value,cls:sel.className});
-    else if(inp) cells.push({t:'date',v:inp.value});
-    else if(ce) cells.push({t:'ce',v:ce.textContent});
-    else cells.push({t:'',v:''});
-  });
-  return cells;
-}
 
 /* ── Escreve dados numa tr existente ── */
-function writeRow(tr,cells){
-  var tds=Array.from(tr.querySelectorAll('td')).filter(function(td){return !td.classList.contains('dc');});
-  cells.forEach(function(cell,i){
-    if(i>=tds.length)return;
-    var td=tds[i];
-    if(cell.t==='sel'){
-      var sel=td.querySelector('select');
-      if(sel){
-        sel.value=cell.v;
-        /* atualizar visual */
-        if(sel.classList.contains('ss')){sel.className='ss s-'+cell.v;}
-        else if(sel.classList.contains('ps')){sel.className='ps p-'+cell.v;}
-        else if(sel.closest('.status-cell')){
-          var dot=sel.closest('.status-cell').querySelector('.sdot');
-          if(dot)dot.className='sdot sdot-'+cell.v;
-        }
-      }
-    } else if(cell.t==='date'){
-      var inp=td.querySelector('input[type=date]');
-      if(inp){inp.value=cell.v;tr.dataset.prazo=cell.v;}
-    } else if(cell.t==='ce'){
-      var ce=td.querySelector('[contenteditable]');
-      if(ce)ce.textContent=cell.v;
-    }
-  });
-}
 
 /* ── Cria nova tr a partir de células salvas ── */
-function createRow(tblId,cells){
-  var tr=document.createElement('tr');
-  cells.forEach(function(cell){
-    var td=document.createElement('td');
-    if(cell.t==='sel'){
-      /* detect select type */
-      var isPrio=['hi','md','lo'].indexOf(cell.v)>=0;
-      var isProc=['ni','ea','fn'].indexOf(cell.v)>=0;
-      if(isPrio){
-        td.innerHTML='<select class="ps p-'+cell.v+'" onchange="updPrio(this)">'
-          +'<option value="hi">Alta</option><option value="md">Média</option><option value="lo">Baixa</option>'
-          +'</select>';
-      } else if(isProc){
-        td.innerHTML='<div class="status-cell"><span class="sdot sdot-'+cell.v+'"></span>'
-          +'<select class="ps2" onchange="updProcStatus(this)">'
-          +'<option value="ni">Não Iniciado</option><option value="ea">Em Andamento</option><option value="fn">Finalizado</option>'
-          +'</select></div>';
-      } else {
-        td.innerHTML='<select class="ss s-'+cell.v+'" onchange="updSel(this)">'
-          +'<option value="ok">🟢 OK</option><option value="wn">🟡 Atenção</option><option value="dg">🔴 Crítico</option>'
-          +'</select>';
-      }
-      if(td.querySelector('select'))td.querySelector('select').value=cell.v;
-    } else if(cell.t==='date'){
-      td.innerHTML='<input type="date" class="di" value="'+(cell.v||'')+'" onchange="onPrazoChange(this,'?');saveLS()">';
-    } else {
-      var span=document.createElement('span');
-      span.contentEditable='true';
-      span.textContent=cell.v||'';
-      span.addEventListener('blur',saveLS);
-      td.appendChild(span);
-    }
-    tr.appendChild(td);
-  });
-  var del=document.createElement('td');
-  del.className='dc';
-  del.innerHTML='<button class="db" onclick="delRow(this)">✕</button>';
-  tr.appendChild(del);
-  return tr;
-}
 
 /* ── COLETA todos os dados ── */
-function collectData(){
-  var d={};
-
-  /* 1. cada tabela: salva array de linhas */
-  ['ptbl-maj_modesto', 'ptbl-2_ten_lunaro', 'ptbl-1_sgt_wellington', 'ptbl-3_sgt_wendel', 'apoio-tbl', 'tbl-atr', 'tbl-cl1_0', 'tbl-cl3_0', 'tbl-cl3_1', 'tbl-cl5mun_0', 'tbl-cl5mun_1', 'tbl-cl2_0', 'tbl-cl2_1', 'tbl-cl5arm_0', 'tbl-cl6_0', 'tbl-cl7_0', 'tbl-cl8_0', 'tbl-cl9_0', 'tbl-cl9_1', 'grat-tbl'].forEach(function(tblId){
-    var tbl=document.getElementById(tblId);
-    if(!tbl)return;
-    var tbody=tbl.tagName==='TBODY'?tbl:tbl.querySelector('tbody');
-    if(!tbody)return;
-    var rows=[];
-    tbody.querySelectorAll('tr').forEach(function(tr){rows.push(readRow(tr));});
-    d['tbl_'+tblId]=rows;
-  });
-
-  /* 2. campos avulsos com data-key */
-  document.querySelectorAll('[data-key]').forEach(function(el){
-    if(el.tagName==='SELECT') d[el.dataset.key]=el.value;
-    else d[el.dataset.key]=el.textContent||'';
-  });
-
-  /* 3. notices */
-  var notices={};
-  document.querySelectorAll('.nb').forEach(function(nb,i){
-    var rows=[];
-    nb.querySelectorAll('.nrow').forEach(function(row){
-      var dot=row.querySelector('.ndot');
-      var txt=row.querySelector('.ntxt');
-      rows.push({cls:dot?dot.className:'ndot nd-ok',text:txt?txt.textContent:''});
-    });
-    notices['nb'+i]=rows;
-  });
-  d['__notices__']=notices;
-
-  /* 4. eventos manuais */
-  if(window.MANUAL_EVENTS&&MANUAL_EVENTS.length)
-    d['__manual_events__']=MANUAL_EVENTS;
-
-  return d;
-}
 
 /* ── APLICA dados ── */
-function applyData(d){
-  if(!d||Object.keys(d).length<2)return;
-
-  /* 1. restaurar tabelas */
-  ['ptbl-maj_modesto', 'ptbl-2_ten_lunaro', 'ptbl-1_sgt_wellington', 'ptbl-3_sgt_wendel', 'apoio-tbl', 'tbl-atr', 'tbl-cl1_0', 'tbl-cl3_0', 'tbl-cl3_1', 'tbl-cl5mun_0', 'tbl-cl5mun_1', 'tbl-cl2_0', 'tbl-cl2_1', 'tbl-cl5arm_0', 'tbl-cl6_0', 'tbl-cl7_0', 'tbl-cl8_0', 'tbl-cl9_0', 'tbl-cl9_1', 'grat-tbl'].forEach(function(tblId){
-    var saved=d['tbl_'+tblId];
-    if(!saved||!saved.length)return;
-    var tbl=document.getElementById(tblId);
-    if(!tbl)return;
-    var tbody=tbl.tagName==='TBODY'?tbl:tbl.querySelector('tbody');
-    if(!tbody)return;
-
-    var existingRows=Array.from(tbody.querySelectorAll('tr'));
-    saved.forEach(function(cells,ri){
-      if(ri<existingRows.length){
-        /* linha existe: só atualiza valores */
-        writeRow(existingRows[ri],cells);
-      } else {
-        /* linha nova: cria e insere */
-        tbody.appendChild(createRow(tblId,cells));
-      }
-    });
-  });
-
-  /* 2. campos avulsos */
-  document.querySelectorAll('[data-key]').forEach(function(el){
-    var v=d[el.dataset.key];
-    if(v===undefined)return;
-    if(el.tagName==='SELECT'){
-      el.value=v;
-      if(el.classList.contains('ss'))el.className='ss s-'+v;
-      if(el.classList.contains('ps'))el.className='ps p-'+v;
-    } else {
-      el.textContent=v;
-    }
-  });
-
-  /* 3. notices */
-  var notices=d['__notices__']||{};
-  document.querySelectorAll('.nb').forEach(function(nb,i){
-    var saved=notices['nb'+i];
-    if(!saved||!saved.length)return;
-    var body=nb.querySelector('.nbody');
-    if(!body)return;
-    body.innerHTML='';
-    saved.forEach(function(n){
-      var div=document.createElement('div');
-      div.className='nrow';
-      div.innerHTML='<div class="'+(n.cls||'ndot nd-ok')+'" onclick="cycleNotice(this)"></div>'
-        +'<div class="ntxt" contenteditable="true" onblur="saveLS()">'+(n.text||'')+'</div>'
-        +'<button class="ndb" onclick="delRow2(this)">✕</button>';
-      body.appendChild(div);
-    });
-  });
-
-  /* 4. eventos manuais */
-  if(d['__manual_events__'])window.MANUAL_EVENTS=d['__manual_events__'];
-
-  /* 5. sync calendário após aplicar */
-  setTimeout(function(){
-    if(typeof syncCalEvents==='function')syncCalEvents();
-    if(typeof renderCal==='function')renderCal();
-  },200);
-}
 
 /* ── SALVAR no Supabase ── */
-function saveLS(){
-  clearTimeout(_saveTimer);
-  _saveTimer=setTimeout(function(){
-    if(_saving)return;
-    _saving=true;
-    setSaveStatus('saving');
-    fetch(SB_URL+'/rest/v1/dashboard_data?id=eq.main',{
-      method:'PATCH',
-      headers:SB_HDR,
-      body:JSON.stringify({payload:collectData(),updated_at:new Date().toISOString()})
-    }).then(function(r){
-      _saving=false;
-      if(r.ok||r.status===204){setSaveStatus('ok');setTimeout(function(){setSaveStatus('');},3000);}
-      else{setSaveStatus('error');}
-    }).catch(function(){_saving=false;setSaveStatus('error');});
-  },1500);
-}
 
 /* ── CARREGAR do Supabase ── */
-function loadFromSupabase(){
-  setSaveStatus('loading');
-  fetch(SB_URL+'/rest/v1/dashboard_data?id=eq.main&select=payload,updated_at',{
-    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}
-  }).then(function(r){return r.json();})
-  .then(function(rows){
-    if(rows&&rows[0]&&rows[0].payload&&Object.keys(rows[0].payload).length>2){
-      applyData(rows[0].payload);
-      var dt=new Date(rows[0].updated_at);
-      setSaveStatus('');
-      var el=document.getElementById('save-status');
-      if(el)el.textContent='🕐 '+dt.toLocaleDateString('pt-BR')+' '+dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-    } else {setSaveStatus('');}
-  }).catch(function(){setSaveStatus('');});
-}
 
 </script>
 </body>
