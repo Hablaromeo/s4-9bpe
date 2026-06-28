@@ -284,7 +284,7 @@ th.sortable.desc::after{content:' ↓';opacity:1}
       <option value="done">Finalizadas</option>
     </select>
   </div>
-  <table class="dt" id="ptbl-maj_modesto">
+  <table class="dt" id="ptbl-maj_modesto" data-tbl-type="proc">
     <thead><tr>
       <th class="sortable" onclick="sortProc('maj_modesto','prio')">Prioridade</th>
       <th>Tarefa</th>
@@ -321,7 +321,7 @@ th.sortable.desc::after{content:' ↓';opacity:1}
       <option value="done">Finalizadas</option>
     </select>
   </div>
-  <table class="dt" id="ptbl-2_ten_lunaro">
+  <table class="dt" id="ptbl-2_ten_lunaro" data-tbl-type="proc">
     <thead><tr>
       <th class="sortable" onclick="sortProc('2_ten_lunaro','prio')">Prioridade</th>
       <th>Tarefa</th>
@@ -358,7 +358,7 @@ th.sortable.desc::after{content:' ↓';opacity:1}
       <option value="done">Finalizadas</option>
     </select>
   </div>
-  <table class="dt" id="ptbl-1_sgt_wellington">
+  <table class="dt" id="ptbl-1_sgt_wellington" data-tbl-type="proc">
     <thead><tr>
       <th class="sortable" onclick="sortProc('1_sgt_wellington','prio')">Prioridade</th>
       <th>Tarefa</th>
@@ -395,7 +395,7 @@ th.sortable.desc::after{content:' ↓';opacity:1}
       <option value="done">Finalizadas</option>
     </select>
   </div>
-  <table class="dt" id="ptbl-3_sgt_wendel">
+  <table class="dt" id="ptbl-3_sgt_wendel" data-tbl-type="proc">
     <thead><tr>
       <th class="sortable" onclick="sortProc('3_sgt_wendel','prio')">Prioridade</th>
       <th>Tarefa</th>
@@ -425,7 +425,7 @@ th.sortable.desc::after{content:' ↓';opacity:1}
       <button class="arb" onclick="addApoioRow()" style="display:inline-flex">+ Apoio</button>
     </div>
   </div>
-  <table class="dt" id="apoio-tbl">
+  <table class="dt" id="apoio-tbl" data-tbl-type="apoio">
     <thead><tr>
       <th>Tipo de Apoio</th><th>OM</th><th>Período</th>
       <th>Responsável</th><th>Observação</th><th class="dc"></th>
@@ -910,7 +910,7 @@ th.sortable.desc::after{content:' ↓';opacity:1}
     <button class="eb" onclick="toggleEdit(this)">⚙ Editar</button>
   </div>
   <div class="atu">Atualizado em: <span contenteditable="true" data-key="ce477" onblur="saveLS()">___/___/______</span></div>
-  <table class="dt" id="grat-tbl">
+  <table class="dt" id="grat-tbl" data-tbl-type="grat">
     <thead><tr>
       <th>Nr Processo</th><th>Atividade</th><th>Militares</th>
       <th>Período</th><th style="width:140px">Status</th><th>Observação</th>
@@ -1121,15 +1121,27 @@ function onPrazoChange(inp, mil) {
 
 function syncCalEvents() {
   CAL_EVENTS = [];
-  document.querySelectorAll('#tab-proc tr[data-prazo]').forEach(function(tr) {
-    var prazo = tr.dataset.prazo;
-    if (!prazo) return;
-    var cells = tr.querySelectorAll('td span[contenteditable]');
-    var tarefa = cells[0] ? cells[0].textContent.trim() : '–';
-    var sec = tr.closest('.tsec');
-    var resp = sec ? (sec.querySelector('.st') ? sec.querySelector('.st').textContent.trim() : '') : '';
-    CAL_EVENTS.push({ date: prazo, title: tarefa || '(sem título)', resp: resp });
+  /* read from ALL proc table rows in DOM */
+  ['ptbl-maj_modesto','ptbl-2_ten_lunaro','ptbl-1_sgt_wellington','ptbl-3_sgt_wendel'].forEach(function(tblId) {
+    var tbl = document.getElementById(tblId);
+    if (!tbl) return;
+    var hdr = tbl.closest('.tsec') ? tbl.closest('.tsec').querySelector('.proc-mil-hdr span') : null;
+    var milName = hdr ? hdr.textContent.trim() : tblId;
+    tbl.querySelectorAll('tbody tr').forEach(function(tr) {
+      var prazo = tr.dataset.prazo || '';
+      /* also try to get prazo from date input */
+      if (!prazo) {
+        var inp = tr.querySelector('input[type=date]');
+        if (inp) prazo = inp.value;
+      }
+      if (!prazo) return;
+      var tds = tr.querySelectorAll('td');
+      var tarefa = tds[1] ? tds[1].textContent.trim() : '';
+      if (tarefa) CAL_EVENTS.push({date: prazo, title: tarefa, resp: milName, type: 'proc'});
+    });
   });
+  /* manual events */
+  if (window.MANUAL_EVENTS) MANUAL_EVENTS.forEach(function(e) { CAL_EVENTS.push(e); });
 }
 
 function getEventsOnDate(d) {
@@ -1447,13 +1459,18 @@ function setSaveStatus(s){
 
 function rdRow(tr){
   var c=[];
+  var tbl=tr.closest('table');
+  var tblType=tbl?tbl.dataset.tblType:'';
   tr.querySelectorAll('td').forEach(function(td){
     if(td.classList.contains('dc'))return;
     var s=td.querySelector('select'),d=td.querySelector('input[type=date]'),e=td.querySelector('[contenteditable]');
-    if(s){
-      /* store class to identify type on restore */
-      c.push({t:'s',v:s.value,cls:s.className});
-    }
+    if(s)c.push({t:'s',v:s.value,cls:s.className,tbl:tblType});
+    else if(d)c.push({t:'d',v:d.value});
+    else if(e)c.push({t:'e',v:e.textContent||''});
+    else c.push({t:'',v:''});
+  });
+  return c;
+}
     else if(d)c.push({t:'d',v:d.value});
     else if(e)c.push({t:'e',v:e.textContent||''});
     else c.push({t:'',v:''});
@@ -1487,42 +1504,45 @@ function wrRow(tr,cells){
   });
 }
 
-function mkRow(cells){
+function mkRow(cells,tblId){
+  var tbl=tblId?document.getElementById(tblId):null;
+  var tblType=tbl?tbl.dataset.tblType:'';
   var tr=document.createElement('tr');
   cells.forEach(function(cell){
     var td=document.createElement('td');
     if(cell.t==='s'){
-      var cls=cell.cls||'';
-      var isPrio=cls.indexOf('ps ')===0&&['hi','md','lo'].indexOf(cell.v)>=0;
-      var isProc=cls.indexOf('ps2')>=0||(!isPrio&&['ni','ea','fn'].indexOf(cell.v)>=0&&cls.indexOf('ss')<0);
-      var isGrat=cls.indexOf('ps2')>=0&&['ea','au','pg','si'].indexOf(cell.v)>=0;
-      /* detect grat by value 'au','pg','si' which only exist in grat */
-      var isGratVal=['au','pg','si'].indexOf(cell.v)>=0;
-      if(isGratVal||isGrat){
+      /* use saved tbl type, fallback to cell.tbl, fallback to value detection */
+      var type=tblType||cell.tbl||'';
+      var isPrio=['hi','md','lo'].indexOf(cell.v)>=0&&(type==='proc'||cell.cls&&cell.cls.indexOf('ps ')===0);
+      var isGrat=type==='grat'||['au','pg','si'].indexOf(cell.v)>=0;
+      var isProc=!isGrat&&!isPrio&&(type==='proc'||['ni','fn'].indexOf(cell.v)>=0||(cell.v==='ea'&&type==='proc'));
+      var isStat=!isGrat&&!isPrio&&!isProc;
+
+      if(isGrat){
         td.innerHTML='<select class="ps2" onchange="saveLS()">'
           +'<option value="ea">Em Andamento</option>'
           +'<option value="au">Autorizado</option>'
           +'<option value="pg">Pago</option>'
           +'<option value="si">Aguard. Sindicância</option>'
           +'</select>';
-      } else if(isPrio){
-        td.innerHTML='<select class="ps p-'+cell.v+'" onchange="updPrio(this)">'
+      }else if(isPrio){
+        td.innerHTML='<select class="ps p-'+(cell.v||'md')+'" onchange="updPrio(this)">'
           +'<option value="hi">Alta</option><option value="md">Média</option><option value="lo">Baixa</option>'
           +'</select>';
-      } else if(isProc){
-        td.innerHTML='<div class="status-cell"><span class="sdot sdot-'+cell.v+'"></span>'
+      }else if(isProc){
+        td.innerHTML='<div class="status-cell"><span class="sdot sdot-'+(cell.v||'ni')+'"></span>'
           +'<select class="ps2" onchange="updProcStatus(this)">'
           +'<option value="ni">Não Iniciado</option><option value="ea">Em Andamento</option><option value="fn">Finalizado</option>'
           +'</select></div>';
-      } else {
-        td.innerHTML='<select class="ss s-'+cell.v+'" onchange="updSel(this)">'
+      }else{
+        td.innerHTML='<select class="ss s-'+(cell.v||'ok')+'" onchange="updSel(this)">'
           +'<option value="ok">🟢 OK</option><option value="wn">🟡 Atenção</option><option value="dg">🔴 Crítico</option>'
           +'</select>';
       }
-      if(td.querySelector('select'))td.querySelector('select').value=cell.v;
-    } else if(cell.t==='d'){
+      if(td.querySelector('select'))td.querySelector('select').value=cell.v||'';
+    }else if(cell.t==='d'){
       td.innerHTML='<input type="date" class="di" value="'+(cell.v||'')+'" onchange="saveLS()">';
-    } else {
+    }else{
       var sp=document.createElement('span');
       sp.contentEditable='true';
       sp.textContent=cell.v||'';
@@ -1578,7 +1598,7 @@ function applyData(d){
     saved.forEach(function(cells,ri){
       if(!cells||!cells.length)return;
       if(ri<existing.length)wrRow(existing[ri],cells);
-      else tb.appendChild(mkRow(cells));
+      else tb.appendChild(mkRow(cells,id));
     });
   });
   var nb=d['_nb']||{};
