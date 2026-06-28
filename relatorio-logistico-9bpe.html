@@ -1579,22 +1579,40 @@ function collectData(){
 
 function applyData(d){
   if(!d||typeof d!=='object')return;
-  /* só aplica se tiver dados reais em pelo menos uma tabela */
+  /* só aplica se tiver dados reais */
   var valid=ALL_TBLS.some(function(id){
-    return d[id]&&d[id].length>0&&d[id][0]&&d[id][0].some(function(c){return c.v&&c.v.trim()!=='';}); 
+    return d[id]&&d[id].length>0&&d[id][0]&&d[id][0].some(function(c){return c.v&&c.v.trim()!=='';});
   });
-  if(!valid){console.log('Payload sem dados reais - mantendo HTML original');return;}
+  if(!valid){console.log('Payload vazio - mantendo HTML');return;}
+
+  /* 1. restaurar tabelas — LIMPA e RECRIA todas as linhas */
   ALL_TBLS.forEach(function(id){
-    var saved=d[id];if(!saved||!saved.length)return;
+    var saved=d[id];
     var tbl=document.getElementById(id);if(!tbl)return;
     var tb=tbl.tagName==='TBODY'?tbl:tbl.querySelector('tbody');if(!tb)return;
-    var existing=Array.from(tb.querySelectorAll('tr'));
-    saved.forEach(function(cells,ri){
+
+    if(!saved||!saved.length){
+      /* sem dados salvos — manter linhas originais do HTML */
+      return;
+    }
+
+    /* limpar tbody completamente */
+    tb.innerHTML='';
+
+    /* recriar apenas as linhas salvas */
+    saved.forEach(function(cells){
       if(!cells||!cells.length)return;
-      if(ri<existing.length)wrRow(existing[ri],cells);
-      else tb.appendChild(mkRow(cells,id));
+      tb.appendChild(mkRow(cells,id));
     });
   });
+
+  /* 2. restaurar campos data-key (nomes militares, datas, OM) */
+  document.querySelectorAll('[data-key][contenteditable]').forEach(function(el){
+    var v=d['dk_'+el.dataset.key];
+    if(v!==undefined&&v!=='')el.textContent=v;
+  });
+
+  /* 3. notices */
   var nb=d['_nb']||{};
   document.querySelectorAll('.nb').forEach(function(el,i){
     var saved=nb[i];if(!saved||!saved.length)return;
@@ -1603,19 +1621,20 @@ function applyData(d){
     saved.forEach(function(n){
       var div=document.createElement('div');div.className='nrow';
       div.innerHTML='<div class="'+(n.c||'ndot nd-ok')+'" onclick="cycleNotice(this)"></div>'
-        +'<div class="ntxt" contenteditable="true" onblur="saveLS()">'+(n.t||'')+'</div>'
+        +'<div class="ntxt" contenteditable="true" data-key="ntxt_'+Math.random().toString(36).slice(2)+'" onblur="saveLS()">'+(n.t||'')+'</div>'
         +'<button class="ndb" onclick="delRow2(this)">✕</button>';
       body.appendChild(div);
     });
   });
 
-  /* restaurar campos avulsos data-key */
-  document.querySelectorAll('[data-key][contenteditable]').forEach(function(el){
-    var v=d['dk_'+el.dataset.key];
-    if(v!==undefined&&v!=='')el.textContent=v;
-  });
+  /* 4. eventos manuais */
   if(d['_evts'])window.MANUAL_EVENTS=d['_evts'];
-  setTimeout(function(){if(typeof syncCalEvents==='function')syncCalEvents();if(typeof renderCal==='function')renderCal();},200);
+
+  /* 5. sync calendário */
+  setTimeout(function(){
+    if(typeof syncCalEvents==='function')syncCalEvents();
+    if(typeof renderCal==='function')renderCal();
+  },200);
 }
 
 function saveLS(){
