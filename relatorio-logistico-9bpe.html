@@ -953,7 +953,7 @@ function toggleEdit(btn) {
 
 function delRow(btn) {
   btn.closest('tr').remove();
-  saveLS();
+  doSave();
 }
 
 function updSel(sel) {
@@ -1099,7 +1099,7 @@ function cycleNotice(dot) {
 
 function delRow2(btn) {
   btn.closest('.nrow').remove();
-  saveLS();
+  doSave();
 }
 
 /* ── CALENDAR ── */
@@ -1645,6 +1645,7 @@ function loadFromSupabase(){
   }).catch(function(e){console.warn('Load failed:',e);setSaveStatus('');});
 }
 
+window.addEventListener('beforeunload', function(){ clearTimeout(_st); doSave(); });
 document.addEventListener('DOMContentLoaded', function() {
   show('proc', document.querySelector('.ni.active'));
   calView('week');
