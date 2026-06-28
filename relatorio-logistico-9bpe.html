@@ -1471,12 +1471,6 @@ function rdRow(tr){
   });
   return c;
 }
-    else if(d)c.push({t:'d',v:d.value});
-    else if(e)c.push({t:'e',v:e.textContent||''});
-    else c.push({t:'',v:''});
-  });
-  return c;
-}
 
 function wrRow(tr,cells){
   var tds=Array.from(tr.querySelectorAll('td')).filter(function(t){return!t.classList.contains('dc');});
